@@ -27,7 +27,7 @@
 
 /*
  * Verify a Flexbuf is ready to manipulate. Return FALSE if we've run
- * out of space.
+ * out of memory.
  */
 bool_t
 flexready(f)
@@ -57,7 +57,7 @@ register Flexbuf	*f;
 
 /*
  * Append a single character to a Flexbuf. Return FALSE if we've run
- * out of space.
+ * out of memory.
  *
  * Note that the f->fxb_chars array is not necessarily null-terminated.
  */
@@ -73,7 +73,8 @@ int	ch;
 }
 
 /*
- * Insert a string info a Flexbuf.
+ * Insert a string info a Flexbuf. Return FALSE if we've run out of
+ * memory.
  */
 bool_t
 flexinsstr(f, pos, str)
@@ -111,6 +112,43 @@ char	*str;
 
     memcpy(f->fxb_chars+start, str, len);
     f->fxb_wcnt += len;
+
+    return TRUE;
+}
+
+/*
+ * Remove a portion of a Flexbuf. Return false on empty Flexbuf and
+ * invalid position or length.
+ */
+bool_t
+flexrmstr(f, pos, len)
+register Flexbuf	*f;
+int	pos, len;
+{
+#if 0
+    /* Saved for future expansion of error handling.*/
+    /* Sanity checks. Give an error message to indicate broken caller. */
+    if (flexempty(f)) {
+	show_message(win, "flexrm: called on empty flexbuf");
+	return FALSE;
+    }
+    if ((f->fxb_rcnt + pos) > f->fxb_wcnt) {
+	show_message(win, "flexrm: called with start point greater than wcnt");
+	return FALSE;
+    }
+#endif
+    if (flexempty(f) || (f->fxb_rcnt + pos) > f->fxb_wcnt)
+	return FALSE;
+
+    /* Handle simple case of lopping a chunk off the end. */
+    if ((f->fxb_rcnt + pos + len) >= f->fxb_wcnt) {
+	f->fxb_wcnt = f->fxb_rcnt + pos;
+	return TRUE;
+    }
+
+    memmove(f->fxb_chars+(f->fxb_rcnt + pos),
+		    f->fxb_chars+(f->fxb_rcnt + pos + len), len);
+    f->fxb_wcnt -= len;
 
     return TRUE;
 }
