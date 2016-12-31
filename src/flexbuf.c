@@ -26,6 +26,36 @@
 #define FLEXEXTRA	64
 
 /*
+ * Verify a Flexbuf is ready to manipulate. Return FALSE if we've run
+ * out of space.
+ */
+bool_t
+flexready(f)
+register Flexbuf	*f;
+{
+    if (flexempty(f))
+	f->fxb_rcnt = f->fxb_wcnt = 0;
+    if (f->fxb_wcnt >= f->fxb_max) {
+	if (f->fxb_max == 0) {
+	    f->fxb_chars = alloc(FLEXEXTRA);
+	    if (f->fxb_chars == NULL)
+		return FALSE;
+	    f->fxb_max = FLEXEXTRA;
+	} else {
+	    char *new_chars;
+	    size_t new_size = f->fxb_wcnt + FLEXEXTRA;
+
+	    new_chars = re_alloc(f->fxb_chars, new_size);
+	    if (new_chars == NULL)
+		return FALSE;
+	    f->fxb_chars = new_chars;
+	    f->fxb_max = new_size;
+	}
+    }
+    return TRUE;
+}
+
+/*
  * Append a single character to a Flexbuf. Return FALSE if we've run
  * out of space.
  *
@@ -36,27 +66,52 @@ flexaddch(f, ch)
 register Flexbuf	*f;
 int	ch;
 {
-    if (flexempty(f))
-	f->fxb_rcnt = f->fxb_wcnt = 0;
-    if (f->fxb_wcnt >= f->fxb_max) {
-	if (f->fxb_max == 0) {
-	    if ((f->fxb_chars = alloc(FLEXEXTRA)) == NULL) {
-		return FALSE;
-	    } else {
-		f->fxb_max = FLEXEXTRA;
-	    }
-	} else {
-	    unsigned newsize = f->fxb_wcnt + FLEXEXTRA;
-
-	    if ((f->fxb_chars = re_alloc(f->fxb_chars, newsize)) == NULL) {
-		f->fxb_wcnt = f->fxb_max = 0;
-		return FALSE;
-	    } else {
-		f->fxb_max = newsize;
-	    }
-	}
-    }
+    if (flexready(f) == FALSE)
+	return FALSE;
     f->fxb_chars[f->fxb_wcnt++] = ch;
+    return TRUE;
+}
+
+/*
+ * Insert a string info a Flexbuf.
+ */
+bool_t
+flexinsstr(f, pos, str)
+register Flexbuf	*f;
+int	pos;
+char	*str;
+{
+    size_t len, start;
+
+    if (flexready(f) == FALSE)
+	return FALSE;
+
+    start = f->fxb_rcnt + pos;
+    len = strlen(str);
+
+    if (start > f->fxb_wcnt)
+	start = f->fxb_wcnt;
+
+    if ((len == 1) && (start == f->fxb_wcnt))
+	return flexaddch(f, str[0]);
+
+    if ((f->fxb_max - f->fxb_wcnt) < len) {
+	size_t newsize = f->fxb_max + (((len/FLEXEXTRA)+1) * FLEXEXTRA);
+	char *newchars = re_alloc(f->fxb_chars, newsize);
+	if (newchars == NULL) {
+	    f->fxb_wcnt = f->fxb_max = 0;
+	    return FALSE;
+	}
+	f->fxb_chars = newchars;
+	f->fxb_max = newsize;
+    }
+
+    if (start < f->fxb_wcnt)
+	memmove(f->fxb_chars+start+len, f->fxb_chars+start, flexlen(f) - pos);
+
+    memcpy(f->fxb_chars+start, str, len);
+    f->fxb_wcnt += len;
+
     return TRUE;
 }
 

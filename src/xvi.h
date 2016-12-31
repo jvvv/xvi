@@ -982,7 +982,9 @@ extern	Posn	*xvLocateTextObject P((Xviwin *, Posn *, int, int));
 /*
  * flexbuf.c
  */
+extern	bool_t	flexready P((Flexbuf *));
 extern	bool_t	flexaddch P((Flexbuf *, int));
+extern	bool_t	flexinsstr P((Flexbuf *, int, char *));
 extern	char	*flexgetstr P((Flexbuf *));
 extern	char	*flexdetach P((Flexbuf *));
 extern	int	flexpopch P((Flexbuf *));
