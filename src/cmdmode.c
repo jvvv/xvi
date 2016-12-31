@@ -22,15 +22,48 @@
 #include "xvi.h"
 
 /*
- * Size of command buffer - we won't allow anything more
- * to be typed when we get to this limit.
+ * This is the increment for resizing the commandline buffers.
  */
-#define	CMDSZ	132
+#define	CMDSZCHUNK	80
 
-static	char		inbuf[CMDSZ];		/* command input buffer */
-static	unsigned int	inpos = 0;		/* posn to put next input char */
-static	unsigned int	inend = 0;		/* one past the last char */
-static	unsigned char	colposn[CMDSZ];		/* holds n chars per char */
+static	size_t		cmdsz;			/* size of commandline buffers */
+static	char		*inbuf;			/* command input buffer */
+static	unsigned int	inpos;			/* posn to put next input char */
+static	unsigned int	inend;			/* one past the last char */
+static	unsigned int	*colposn;		/* holds n chars per char */
+
+/*
+ * cmd_buf_alloc(win)
+ *
+ * Dynamically allocate and resize commandline buffer arrays.
+ */
+bool_t
+cmd_buf_alloc(win)
+Xviwin	*win;
+{
+    size_t new_cmdsz;
+    char *new_inbuf;
+    unsigned int *new_colposn;
+
+    new_cmdsz = cmdsz + CMDSZCHUNK;
+
+    if ((new_inbuf = re_alloc(inbuf, new_cmdsz)) == NULL) {
+	show_error(win, "Failed to allocate command line inbuf");
+	return FALSE;
+    }
+
+    if ((new_colposn = re_alloc(colposn, new_cmdsz * sizeof(int))) == NULL) {
+	free(new_inbuf);
+	show_error(win, "Failed to allocate command line colposn");
+	return FALSE;
+    }
+
+    cmdsz = new_cmdsz;
+    inbuf = new_inbuf;
+    colposn = new_colposn;
+
+    return TRUE;
+}
 
 /*
  * cmd_init(window, firstch)
@@ -47,15 +80,18 @@ int	firstch;
 	return;
     }
 
-    State = CMDLINE;
+    if (!cmdsz && !cmd_buf_alloc(win))
+	return;
 
+    State = CMDLINE;
     flexclear(&win->w_statusline);
     (void) flexaddch(&win->w_statusline, firstch);
     inbuf[0] = firstch;
+    inbuf[1] = '\0';
     colposn[0] = 0;
     inpos = 1; inend = 1;
     colposn[1] = 1;
-    update_cline(win,colposn[1]);
+    update_cline(win, colposn[1]);
 }
 
 /*
@@ -112,13 +148,32 @@ Xviwin	*win;
 int	ch;
 {
     static bool_t	literal_next = FALSE;
-    unsigned		len;
-    char *		stat; /* Pointer to status line text */
+    unsigned		len, curposn, endposn, w;
+    int		i;
+    char		*p, *s;
 
-    if (kbdintr) {
-	    kbdintr = FALSE;
-	    imessage = TRUE;
-	    ch = CTRL('C');
+    if (kbdintr || (((ch == CTRL('C')) || (ch == ESC)) && !literal_next)) {
+	kbdintr = FALSE;
+	imessage = TRUE;
+	inpos = 0; inend = 0;
+	inbuf[inend] = '\0';
+	flexclear(&win->w_statusline);
+	update_cline(win, colposn[inpos]);
+	State = NORMAL;
+	return cmd_CANCEL;
+    }
+
+    if ((inend > (cmdsz - CMDSZCHUNK)) && !cmd_buf_alloc(win)) {
+	/*
+	 * If we fail to alloc/resize the buffers, we can't continue
+	 * the commandline. There really needs to be another state
+	 * for ALLOCFAIL to either (1) try to find a way to reduce
+	 * memory usage and continue or (2) preserve buffers, if
+	 * possible, and bail out.
+	 */
+	cmdsz = inpos = inend = 0;
+	State = NORMAL;
+	return cmd_CANCEL;
     }
 
     if (!literal_next) {
@@ -126,7 +181,7 @@ int	ch;
 	case CTRL('Q'):
 	case CTRL('V'):
 	    literal_next = TRUE;
-	    return(cmd_INCOMPLETE);
+	    return cmd_INCOMPLETE;
 
 	case '\n':		/* end of line */
 	case '\r':
@@ -134,7 +189,7 @@ int	ch;
 	    inpos = 0; inend = 0;
 	    State = NORMAL;		/* return state to normal */
 	    update_sline(win);		/* line is now a message line */
-	    return(cmd_COMPLETE);	/* and indicate we are done */
+	    return cmd_COMPLETE;	/* and indicate we are done */
 
 	case '\b':		/* backspace or delete */
 	case DEL:
@@ -159,14 +214,11 @@ int	ch;
 	      len = colposn[oldinpos] - colposn[inpos];
 	      /* Delete the characters from the command line buffer */
 	      memmove(inbuf+inpos, inbuf+oldinpos, inend-oldinpos);
-	      memmove(colposn+inpos, colposn+oldinpos, inend-oldinpos+1);
+	      memmove(colposn+inpos, colposn+oldinpos, (inend-oldinpos+1) * sizeof(int));
 	      inend -= (oldinpos - inpos);
 	      /* Update the screen columns */
 	      for (i=inpos; i <= inend; i++) colposn[i] -= len;
-	      /* Move the end of the status line down to fill the gap */
-              stat = &win->w_statusline.fxb_chars[win->w_statusline.fxb_rcnt];
-	      memmove(stat+colposn[inpos], stat+colposn[inpos]+len,
-		      colposn[inend]-colposn[inpos]);
+	      flexrmstr(&win->w_statusline, colposn[inpos], len);
 	    }
 	    if (inpos == 0) {
 		/*
@@ -174,13 +226,11 @@ int	ch;
 		 * go back to normal mode.
 		 */
 		State = NORMAL;
-		return(cmd_CANCEL);
+		return cmd_CANCEL;
 	    }
-	    len = colposn[inend];
-	    while (flexlen(&win->w_statusline) > len)
-		(void) flexrmchar(&win->w_statusline);
+	    inbuf[inend] = '\0';
 	    update_cline(win,colposn[inpos]);
-	    return(cmd_INCOMPLETE);
+	    return cmd_INCOMPLETE;
 
 	case '\t':
 	{
@@ -194,7 +244,7 @@ int	ch;
 	    to_expand = strrchr(inbuf, ' ');
 	    if (to_expand == NULL || *(to_expand + 1) == '\0') {
 	    	beep(win);
-		return(cmd_INCOMPLETE);
+		return cmd_INCOMPLETE;
 	    } else {
 		to_expand++;
 	    }
@@ -223,7 +273,7 @@ int	ch;
 		beep(win);
 	    }
 
-	    return(cmd_INCOMPLETE);
+	    return cmd_INCOMPLETE;
 	}
 
 	case EOF:
@@ -232,15 +282,7 @@ int	ch;
 	    flexclear(&win->w_statusline);
 	    (void) flexaddch(&win->w_statusline, inbuf[0]);
 	    update_cline(win, colposn[inpos]);
-	    return(cmd_INCOMPLETE);
-
-	case CTRL('C'):
-	case ESC:
-	    inpos = 0; inend = 0;
-	    flexclear(&win->w_statusline);
-	    update_cline(win, colposn[inpos]);
-	    State = NORMAL;
-	    return(cmd_CANCEL);
+	    return cmd_INCOMPLETE;
 
 	/* Simple line editing */
 
@@ -250,7 +292,7 @@ int	ch;
 	        update_cline(win, colposn[inpos]);
 	    }
 	    else beep(win);
-	    return(cmd_INCOMPLETE);
+	    return cmd_INCOMPLETE;
 
 	case K_RARROW:
 	    if (inpos < inend) {
@@ -258,7 +300,23 @@ int	ch;
 	        update_cline(win, colposn[inpos]);
 	    }
 	    else beep(win);
-	    return(cmd_INCOMPLETE);
+	    return cmd_INCOMPLETE;
+
+	case K_DARROW:
+	    if (inpos != 1) {
+		inpos = 1;
+		update_cline(win, colposn[inpos]);
+	    }
+	    else beep(win);
+	    return cmd_INCOMPLETE;
+
+	case K_UARROW:
+	    if (inpos != inend) {
+		inpos = inend;
+		update_cline(win, colposn[inpos]);
+	    }
+	    else beep(win);
+	    return cmd_INCOMPLETE;
 
 	default:
 	    break;
@@ -267,47 +325,44 @@ int	ch;
 
     literal_next = FALSE;
 
-    if (inend >= sizeof(inbuf) - 1) {
+    if (inend >= (win->w_ncols - win->w_spare_cols)) {
 	/*
-	 * Must not overflow buffer.
+	 * Command line width limited to win->w_ncols - win->w_spare_cols.
 	 */
 	beep(win);
-    } else {
-	unsigned	curposn, endposn;
-	unsigned	w;
-	char		*p;
-
-	curposn = colposn[inpos - 1];
-	endposn = colposn[inend - 1];
-	w = vischar(ch, &p, -1);
-	if (endposn + w >= win->w_ncols - 1) {
-	    beep(win);
-	} else {
-	    int i;
-	    memmove(inbuf+inpos+1, inbuf+inpos, inend-inpos);
-	    memmove(colposn+inpos+1, colposn+inpos, inend-inpos+1);
-	    for (i=inpos+1; i <= inend+1; i++) colposn[i] += w;
-	    inend++; inbuf[inpos++] = ch;
-	    colposn[inpos] = colposn[inpos-1] + w;
-
-	    (void) lformat(&win->w_statusline, "%s", p);
-	    /* That appended the representation of the char to the
-	     * status line, extending the flexbuf, but we were supposed
-	     * to insert the new char, not append it, so move the rest
-	     * of the status line up, then deposit the new char(s) in
-	     * the hole that this leaves.
-	     */
-            stat = &win->w_statusline.fxb_chars[win->w_statusline.fxb_rcnt];
-            memmove(stat+colposn[inpos],
-		    stat+colposn[inpos-1],
-		    colposn[inend-1]-colposn[inpos-1]+1);
-	    memcpy(stat+colposn[inpos-1],p,w);
-
-	    update_cline(win, colposn[inpos]);
-	}
+	return cmd_INCOMPLETE;
     }
 
-    return(cmd_INCOMPLETE);
+    curposn = colposn[inpos - 1];
+    endposn = colposn[inend - 1];
+    w = vischar(ch, &p, -1);
+
+    if (((endposn + w) >= (cmdsz - CMDSZCHUNK)) && (!cmd_buf_alloc(win))) {
+	/* Memory allocation failure. Set things to a semi-sane state and
+	 * cancel. Needs better error handling.
+	 */
+	cmdsz = inpos = inend = 0;
+	State = NORMAL;
+	return cmd_CANCEL;
+    }
+
+    if (inpos < inend) {
+	memmove(inbuf+inpos+1, inbuf+inpos, inend-inpos);
+	memmove(colposn+inpos+1, colposn+inpos, (inend-inpos+1) * sizeof(int));
+	for (i=inpos+1; i <= inend+1; i++)
+	    colposn[i] += w;
+    }
+
+    flexinsstr(&win->w_statusline, colposn[inpos], p);
+
+    inend++;
+    inbuf[inpos++] = ch;
+    inbuf[inend] = '\0';
+    colposn[inpos] = colposn[inpos-1] + w;
+
+    update_cline(win, colposn[inpos]);
+
+    return cmd_INCOMPLETE;
 }
 
 /*ARGSUSED*/
@@ -315,5 +370,5 @@ char *
 get_cmd(win)
 Xviwin	*win;
 {
-    return(inbuf);
+    return inbuf;
 }
