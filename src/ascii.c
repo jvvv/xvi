@@ -44,7 +44,7 @@ vischar(c, pp, tabcol)
     register char	**pp;
     register int	tabcol;
 {
-    static char		crep[5];
+    static char		crep[MAX_CREP];
 
     if (c == '\t' && tabcol >= 0 && Pb(P_tabs) && !Pb(P_list)) {
 	/*

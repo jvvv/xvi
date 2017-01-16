@@ -22,7 +22,10 @@
 #include "xvi.h"
 
 /*
- * This is the increment for resizing the commandline buffers.
+ * This is the increment for resizing the commandline buffers. This value should
+ * be sufficient for most commands. This is crucial; if we ever get into an 'out
+ * of memory' situation, we need to be sure that we don't need to realloc the
+ * inbuf when the user is trying to save the buffers back to file.
  */
 #define	CMDSZCHUNK	80
 
@@ -45,7 +48,7 @@ Xviwin	*win;
     char *new_inbuf;
     unsigned int *new_colposn;
 
-    new_cmdsz = cmdsz + CMDSZCHUNK;
+    new_cmdsz = (cmdsz ? ((cmdsz/CMDSZCHUNK) * CMDSZCHUNK) : CMDSZCHUNK) + MAX_CREP + 1;
 
     if ((new_inbuf = re_alloc(inbuf, new_cmdsz)) == NULL) {
 	show_error(win, "Failed to allocate command line inbuf");
@@ -152,9 +155,13 @@ int	ch;
     int		i;
     char		*p, *s;
 
-    if (kbdintr || (((ch == CTRL('C')) || (ch == ESC)) && !literal_next)) {
+    if (kbdintr) {
 	kbdintr = FALSE;
 	imessage = TRUE;
+	ch = CTRL('C');
+    }
+
+    if ((ch == CTRL('C') || ch == ESC) && !literal_next) {
 	inpos = 0; inend = 0;
 	inbuf[inend] = '\0';
 	flexclear(&win->w_statusline);
@@ -163,7 +170,7 @@ int	ch;
 	return cmd_CANCEL;
     }
 
-    if ((inend > (cmdsz - CMDSZCHUNK)) && !cmd_buf_alloc(win)) {
+    if (inend > (cmdsz - MAX_CREP) && !cmd_buf_alloc(win)) {
 	/*
 	 * If we fail to alloc/resize the buffers, we can't continue
 	 * the commandline. There really needs to be another state
@@ -337,7 +344,7 @@ int	ch;
     endposn = colposn[inend - 1];
     w = vischar(ch, &p, -1);
 
-    if (((endposn + w) >= (cmdsz - CMDSZCHUNK)) && (!cmd_buf_alloc(win))) {
+    if ((endposn + w) >= (cmdsz - MAX_CREP) && (!cmd_buf_alloc(win))) {
 	/* Memory allocation failure. Set things to a semi-sane state and
 	 * cancel. Needs better error handling.
 	 */

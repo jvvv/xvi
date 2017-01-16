@@ -251,6 +251,11 @@ typedef	int		bool_t;
  */
 #define	MAX_UNDO	100
 
+/*
+ * Maximum size for visual representation for a character.
+ */
+#define MAX_CREP	5
+
 
 /***************************************************************
  *                                                             *
