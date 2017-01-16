@@ -325,19 +325,38 @@ Xviwin	*win;
 int pos;	/* Position of cursor within line */
 {
     Sline	*clp;
-    int		colindex;
-    unsigned	width, maxwidth;
+    int		colindex, start, col;
+    size_t	width, maxwidth, cont;
     char	*cp;
 
     clp = win->w_vs->pv_int_lines + win->w_cmdline;
-
+    cont = 0;
     maxwidth = win->w_ncols - win->w_spare_cols;
-    if ((width = flexlen(&win->w_statusline)) > maxwidth) {
+    start = (pos > maxwidth) ? (pos / maxwidth) * maxwidth : 0;
+    cp = flexgetstr(&win->w_statusline);
+    width = strlen(cp+start);
+    if (width == 0) {
+	start -= maxwidth;
 	width = maxwidth;
     }
-    (void) strncpy(clp->s_line, sline_text(win), width);
-    clp->s_used = width;
-    clp->s_line[width] = '\0';
+    col = (pos > maxwidth) ? pos - start : pos;
+
+    if (width > maxwidth) {
+	width = maxwidth;
+    }
+
+    if (start) {
+	clp->s_line[cont++] = '<';
+	width--;
+    }
+
+    (void) strncpy(clp->s_line+cont, cp+start, width);
+    clp->s_used = width + cont;
+    if (strlen(cp) > (start + maxwidth)) {
+	clp->s_line[width + cont - 1] = '>';
+	col--;
+    }
+    clp->s_line[width + cont] = '\0';
     clp->s_flags = (S_COMMAND | S_DIRTY);
     if (is_readonly(win->w_buffer)) {
 	clp->s_flags |= S_READONLY;
@@ -361,7 +380,7 @@ int pos;	/* Position of cursor within line */
      * it because the line's contents have almost certainly changed.
      */
     xvUpdateScr(win, win->w_vs, (int) win->w_cmdline, 1);
-    VSgoto(win->w_vs, (int) win->w_cmdline, pos);
+    VSgoto(win->w_vs, (int) win->w_cmdline, col);
     VSflush(win->w_vs);
 }
 
