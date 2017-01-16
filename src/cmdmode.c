@@ -48,7 +48,7 @@ Xviwin	*win;
     char *new_inbuf;
     unsigned int *new_colposn;
 
-    new_cmdsz = (cmdsz ? ((cmdsz/CMDSZCHUNK) * CMDSZCHUNK) : CMDSZCHUNK) + MAX_CREP + 1;
+    new_cmdsz = (cmdsz ? ((cmdsz/CMDSZCHUNK) * CMDSZCHUNK) : 0) + CMDSZCHUNK + MAX_CREP + 1;
 
     if ((new_inbuf = re_alloc(inbuf, new_cmdsz)) == NULL) {
 	show_error(win, "Failed to allocate command line inbuf");
@@ -331,14 +331,6 @@ int	ch;
     }
 
     literal_next = FALSE;
-
-    if (inend >= (win->w_ncols - win->w_spare_cols)) {
-	/*
-	 * Command line width limited to win->w_ncols - win->w_spare_cols.
-	 */
-	beep(win);
-	return cmd_INCOMPLETE;
-    }
 
     curposn = colposn[inpos - 1];
     endposn = colposn[inend - 1];
