@@ -174,9 +174,10 @@ static	Termstate	cooked_state, raw_state;
 #endif
 
 /*
- * Expected for termcap's benefit.
+ * ospeed must be set so that termcap's tputs is able to properly
+ * determine correct amount of padding to use.
  */
-short		ospeed;			/* tty's baud rate */
+extern	short		ospeed;		/* tty's baud rate */
 
 /*
  * We sometimes use a lot of system calls while trying to read from
@@ -558,7 +559,8 @@ sys_init()
 #endif
 
     /*
-     * This is for termcap's benefit.
+     * This is to facilitate termcap's tputs to determine correct
+     * number of padding characters (PC).
      */
 #ifdef	TERMIO
 #   ifdef	POSIX

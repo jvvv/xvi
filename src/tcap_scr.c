@@ -149,9 +149,15 @@ unsigned int	CO = 0;			/* screen dimensions; 0 at start */
 unsigned int	LI = 0;
 
 /*
- * Needed by termcap library.
+ * Needed by termcap's tputs as the padding character to use when outputting
+ * terminal control sequences.
  */
-char	PC;				/* pad character */
+extern	char	PC;			/* pad character */
+/*
+ * Needed by termcap's togoto as compensation string for moving back or up.
+ */
+extern	char	*BC;
+extern	char	*UP;
 
 /*
  * Internal string, num and boolean defs.
@@ -168,14 +174,14 @@ static	char	*CS;			/* change scroll region */
 static	char	*sf, *sr;		/* scroll forward/reverse 1 line */
 static	char	*SF, *SR;		/* scroll forward/reverse n lines */
 static	char	*MR, *MD, *ME;		/* reverse/double-intensity mode start/end */
+static	char	*LE;			/* move left one column */
 
 static	char	*VB;			/* visual bell */
 
 static	char	*colours[10];		/* colour caps c0 .. c9 */
 static	int	ncolours;		/* number of colour caps we have */
 
-static	char	bc;			/* backspace char */
-static	char	ND;			/* non-destructive forwward space */
+static	char	ND;			/* non-destructive forward space */
 static	char	DO;			/* down one line */
 
 static	bool_t	can_backspace;		/* true if can backspace (bs/bc) */
@@ -871,11 +877,11 @@ unsigned int	*pcolumns;
     if (cp != NULL)
 	PC = *cp;
 
-    cp = tgetstr("bc", &strp);	/* backspace char if not ^H */
-    if (cp != NULL && cp[1] == '\0')
-	bc = *cp;
-    else
-	bc = '\b';
+    UP = tgetstr("up", &strp);	/* move up */
+    LE = tgetstr("le", &strp);	/* move left */
+    BC = tgetstr("bc", &strp);	/* backspace char, check both bc and le */
+    if (BC == NULL)
+	BC = LE;
 
     cp = tgetstr("nd", &strp);	/* non-destructive forward space */
     if (cp != NULL && cp[1] == '\0') {
@@ -1458,7 +1464,11 @@ xyupdate()
 			moutch('\r');
 		    } else {
 			for (n = hdisp; n < 0; n++) {
-			    moutch(bc);
+			    if (BC) {
+				tputs(BC, 1, foutch);
+			    } else {
+				moutch('\b');
+			    }
 			}
 		    }
 		} else if (hdisp > 0) {
@@ -1497,7 +1507,11 @@ xyupdate()
 		     * Back a bit.
 		     */
 		    for (n = hdisp; n < 0; n++) {
-			moutch(bc);
+			if (BC) {
+			    tputs(BC, 1, foutch);
+			} else {
+			    moutch('\b');
+			}
 		    }
 
 		} else {
