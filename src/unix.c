@@ -173,11 +173,15 @@ static	Termstate	cooked_state, raw_state;
     static	char	outbuffer[128];
 #endif
 
+#ifdef AIX
 /*
  * ospeed must be set so that termcap's tputs is able to properly
  * determine correct amount of padding to use.
  */
 extern	short		ospeed;		/* tty's baud rate */
+#else
+#include <termcap.h>
+#endif
 
 /*
  * We sometimes use a lot of system calls while trying to read from

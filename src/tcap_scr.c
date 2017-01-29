@@ -131,11 +131,25 @@ static	int	real_row = 0, real_col = 0;
 static	int	virt_row = 0, virt_col = 0;
 static	bool_t	optimise = FALSE;
 
+#ifdef AIX
 /*
  * Termcap-related declarations.
  */
 extern	char	*tgetstr();
 extern	char	*tgoto();
+
+/*
+ * Needed by termcap's tputs as the padding character to use when outputting
+ * terminal control sequences.
+ */
+extern	char	PC;			/* pad character */
+
+/*
+ * Needed by termcap's togoto as compensation string for moving back or up.
+ */
+extern	char	*BC;
+extern	char	*UP;
+#endif
 
 /*
  * Exported.
@@ -147,17 +161,6 @@ bool_t		can_ins_line;		/* true if we can insert lines */
 bool_t		can_inschar;		/* true if we can insert characters */
 unsigned int	CO = 0;			/* screen dimensions; 0 at start */
 unsigned int	LI = 0;
-
-/*
- * Needed by termcap's tputs as the padding character to use when outputting
- * terminal control sequences.
- */
-extern	char	PC;			/* pad character */
-/*
- * Needed by termcap's togoto as compensation string for moving back or up.
- */
-extern	char	*BC;
-extern	char	*UP;
 
 /*
  * Internal string, num and boolean defs.
