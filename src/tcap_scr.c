@@ -883,8 +883,13 @@ unsigned int	*pcolumns;
     UP = tgetstr("up", &strp);	/* move up */
     LE = tgetstr("le", &strp);	/* move left */
     BC = tgetstr("bc", &strp);	/* backspace char, check both bc and le */
-    if (BC == NULL)
-	BC = LE;
+    if (BC == NULL) {
+	if (can_backspace) {
+	    BC = "\b";
+	} else {
+	    BC = LE;
+	}
+    }
 
     cp = tgetstr("nd", &strp);	/* non-destructive forward space */
     if (cp != NULL && cp[1] == '\0') {
