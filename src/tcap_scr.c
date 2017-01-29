@@ -147,8 +147,8 @@ extern	char	PC;			/* pad character */
 /*
  * Needed by termcap's togoto as compensation string for moving back or up.
  */
-extern	char	*BC;
-extern	char	*UP;
+char	*BC;
+char	*UP;
 #endif
 
 /*
